@@ -1,0 +1,691 @@
+<!doctype html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<title>Migrants</title>
+	<script src="https://d3js.org/d3.v5.min.js"></script>
+</head>
+
+<body>
+	<script>
+
+		// -------------------------------------- color variables
+
+		var main_col = "#00ff66";
+		var title_col = "#13bd49";
+		var subtitle_col = "#ffffff";
+		var white_col = "#ffffff";
+		var light_col = "#68fcab";
+		var moderate_col = "#01ff66";
+		var dark_col = "#02af59";
+		var border_col = "#139e45";
+		var back_col = "#010c16";
+		var black_col = "#210612";
+		var country_over_col = "#0b2d1f";
+		var tooltip_col = "#e0e0e0";
+		var blue_col = "#4242ff";
+		var button_over_col = "#010c16";
+		var country_over_col = "#0b2d1f";
+
+		var regions_en = [
+			"Mediterranean",
+			"Africa",
+			"Northern Africa",
+			"Eastern Africa",
+			"Middle Africa",
+			"Western Africa",
+			"Asia",
+			"South-eastern Asia",
+			"Western Asia",
+			"Southern Asia",
+			"Caribbean",
+			"Europe",
+			"Middle East",
+			"Central America",
+			"North America",
+			"US-Mexico Border",
+			"South America"
+		];
+
+		var regions_cols = [
+			"#3e3ec9", //blue	Mediterranean
+			"#FF6699", //pink 	Africa
+			"#FF6699", //pink	Northern Africa
+			"#FF6699", //pink 	Eastern Africa
+			"#FF6699", //pink 	Middle Africa
+			"#FF6699", //pink 	Western Africa
+			"#faff69", //yellow	Asia
+			"#faff69", //yellow	South-eastern Asia
+			"#faff69", //yellow	Western Asia
+			"#faff69", //yellow	Southern Asia
+			"#6c0229", //brown   
+			"#279fdb", //lightblue
+			"#CC66FF", //violet
+			"#6c0229", //brown		Central America
+			"#6c0229", //brown	North America
+			"#55a630", //brown	US-Mexico Border
+			"#5af2b4", //green		North America
+		];
+
+		// -------------------------------------- main settings
+
+		// Background
+		d3.select("body")
+			.style("background", back_col)
+			.style("font-family", "Verdana, Geneva, sans-serif")
+			.attr("height", "700px");
+
+		// Margin
+		var margin = { top: 65, right: 50, bottom: 20, left: 50 },
+			width = 1200 - margin.left - margin.right,
+			height = 800 - margin.top - margin.bottom;
+
+		// -------------------------------------- div for svg
+
+		var div_main = d3.select("body")
+			.append("div")
+			.attr("id", "div_main")
+			// .style("border", "10px solid white")
+			.style("margin", "50px auto");
+
+		// -------------------------------------- svg board
+
+		var svg = div_main.append('svg')
+			.attr('width', width + margin.left + margin.right)
+			.attr('height', height + margin.top + margin.bottom)
+			.style("display", "block")
+			.style("margin", "0px auto")
+			.style("border", "5px solid green")
+			.style("background", back_col)
+			.append('g')
+			.attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+		// -------------------------------------- Title & subtitle
+
+
+		// Title
+		var story = svg
+			.append('image')
+			.attr('xlink:href', "./green.png")
+			.attr('width', 50)
+			.attr('height', 50)
+			.style("opacity", 1)
+			.attr("transform", "translate(-20,-60)");
+
+		// Sub-Title
+		svg.append("text")
+			.text("Migrants who Survived crossing borders")
+			.attr("x", 30)
+			.attr("y", - 20)
+			.style("fill", "#90EE90")
+			.style("font", "14px Verdana")
+			.style("opacity", 0.9);
+
+
+
+		// -------------------------------------- geo data
+
+		const geoFile = "./world_countries_geojson.geojson";
+		const dataFile = "./MinivisualiseringData3.csv";
+		// store global objects here
+		var map = {};
+		var dataset = {};
+
+		Promise.all([
+
+			d3.json(geoFile),
+			d3.csv(dataFile, function (survivors) {
+				return {
+					region: survivors.Region_of_Incident,
+					border: survivors.Migration_route,
+					coord: [+survivors.lon, +survivors.lat],
+					survivors: +survivors.Number_of_Survivors,
+					date: parseTime(survivors.Website_Date_Fixed),
+					random: +survivors.random
+				}
+			})
+		])
+			.then(function ([shapes, data]) {
+				map.features = shapes.features;
+				dataset = data;
+				console.log(dataset)
+				console.log(map.features)
+				draw();
+
+			});
+
+		// -------------------------------------- map 
+
+		// Projection
+		const projection = d3.geoNaturalEarth1() //d3.geoNaturalEarth1() d3.geoMercator()
+			.scale(200)
+			.translate([(width / 2) - 150, (height / 2) + -30]);
+
+		// Path generator 
+		const geoPath = d3.geoPath()
+			.projection(projection);
+
+		var regionScale = d3.scaleOrdinal()
+			.domain(regions_en)
+			.range(regions_cols);
+
+		// -------------------------------------- scales
+
+		// Area Scale
+		var areaScale = d3.scaleSqrt()
+			.domain([0, 800])
+			.range([0.6, 10]);
+
+		// Circle Scale
+		var circleScale = d3.scaleSqrt()
+			.domain([0, 10])
+			.range([0, 5]);
+
+		// Color Scale
+		var colorScale = d3.scaleLinear()
+			.domain([0, 800])
+			.range([" #90EE90", "green"]);
+
+		// Opacity Scale
+		var opacityScale = d3.scaleLinear()
+			.domain([0, 600])
+			.range([0.2, 0.9]);
+
+
+		// -------------------------------------- time parse, formate
+
+		// Parse date
+		// date: "2014-01-06"
+		//var parseTime = d3.timeParse("%e-%b-%Y");
+		var parseTime = d3.timeParse("%Y-%m-%d");
+		console.log(parseTime("9-Feb-1917")); // test the formula
+		// 2014-01-06
+
+		// Formate date
+		var formatTime = d3.timeFormat("%Y %m %d");
+		console.log(formatTime(new Date)); // test the formula
+
+		// Axis scale
+		var timeScale = d3.scaleTime()
+			.domain([parseTime("2014-01-01"), parseTime("2022-06-26")])
+			.range([0, width - 160]);
+
+		// Define axis
+		var timeAxis = d3.axisBottom(timeScale)
+			.ticks(7)
+			.tickSizeInner(10)
+			.tickSizeOuter(0)
+			.tickPadding(35);
+
+
+		// --------------------------------- draw function
+
+		function draw() {
+
+
+
+			// country path 
+			svg.selectAll("path.country")
+				.data(map.features)
+				.enter().append("path")
+				.attr("class", "country")
+				.attr("d", geoPath)
+				.style("fill", "gray")
+				.style("stroke", "black")
+				.style("stroke-width", "0.4");
+
+			// main circles
+			svg.selectAll("circle.main_circles")
+				.data(dataset)
+				.enter().append("circle")
+				.attr("class", "main_circles")
+				.attr("cx", d => projection(d.coord)[0])
+				.attr("cy", d => projection(d.coord)[1])
+				.attr("r", d => areaScale(d.survivors))
+
+				.style("stroke", d => regionScale(d.region))
+				.style("fill", d => regionScale(d.region))
+
+				// .style("stroke", d => colorScale(d.survivors))
+				// .style("fill", d => colorScale(d.survivors))
+				.attr("stroke-width", 0.4)
+				.style("stroke-opacity", d => opacityScale(d.survivors) + 0.1)
+				.style("fill-opacity", d => opacityScale(d.survivors) + 0.2);
+
+			// contour circles
+			svg.selectAll("circle.contour_circles")
+				.data(dataset)
+				.enter().append("circle")
+				.attr("class", "contour_circles")
+				.attr("cx", d => projection(d.coord)[0])
+				.attr("cy", d => projection(d.coord)[1])
+				.attr("r", d => areaScale(d.survivors) + circleScale(5))
+
+				.style("stroke", "black")
+				.style("fill", "white")
+				.style("stroke-opacity", 0.085)
+				.attr("stroke-width", 0.2)
+				.style("fill-opacity", 0);
+			// -------------------------------------- dots tooltip
+
+			var tooltip = div_main.append("div")
+				.attr("class", "tooltip")
+				.style("opacity", 0)
+				.style("pointer-events", "none")
+				.style("position", "absolute")
+				.style("text-align", "left")
+				.style("width", "100px")
+				.style("height", "100px")
+				.style("font", "9px Tahoma")
+				.style("color", tooltip_col)
+				.style("background-color", "rgba(1, 12, 22, 0.8)")
+				.style("border-radius", "9px")
+				.style("padding", "4px")
+				.style("line-height", "1")
+				.style("display", "inline");
+
+			// move
+			var mousemove = function (d) {
+
+				tooltip
+					.transition()
+					.duration(200)
+					.style("opacity", 1);
+
+				tooltip
+					.html("<b>  Survivors: " + d.survivors
+						+ " </b> <br/> "
+						+" <br/> Region: "+d.region 
+						+"Border:  "+ d.border 
+						+ "</br> Date: " + formatTime(d.date))
+					.style("left", (d3.event.pageX + 10) + "px")
+					.style("top", (d3.event.pageY - 1) + "px");
+
+
+				d3.select("div.tooltip b")
+					.style("font-size", "10px")
+					.style("color", "green")
+
+				d3.select("div.tooltip span")
+					.style("font-size", "5px")
+					.style("color", "black");
+
+				// console.log(d3.select(this).attr('cx'), d3.select(this).attr('cy'));
+				// console.log(d3.select(this).style('stroke-opacity'));
+
+			}
+
+			// leave
+			var mouseleave = function (d) {
+
+				tooltip
+					.transition()
+					.duration(200)
+					.style("opacity", 0);
+
+			}
+
+			// call the tooltip
+			d3.selectAll("circle.contour_circles")
+				.on("mousemove", mousemove)
+				.on("mouseleave", mouseleave);
+
+
+
+
+
+			// -------------------------------------- country tooltip
+
+			var country_tooltip = div_main.append("div")
+				.attr("class", "country_tooltip")
+				.style("opacity", 0)
+				.style("pointer-events", "none")
+				.style("position", "absolute")
+				.style("text-align", "center")
+				.style("width", "120px")
+				.style("height", "30px")
+				.style("font", "11px Tahoma")
+				.style("color", "green")
+				.style("background-color", "none")
+				.style("border-radius", "9px")
+				.style("padding", "4px")
+				.style("line-height", "2")
+				.style("display", "inline");
+
+			// move
+			var country_mousemove = function (d) {
+
+				country_tooltip
+					.transition()
+					.duration(10)
+					.style("opacity", 1);
+
+				country_tooltip
+					.html("<b> " + d.properties.name + "</b>")
+					.style("left", (d3.event.pageX - 30) + "px")
+					.style("top", (d3.event.pageY - 30) + "px");
+
+				d3.select("div.country_tooltip b")
+					.style("font-size", "10px")
+					.style("color", tooltip_col)
+					.style("background-color", "rgba(1, 12, 22, 0.5)")
+					.style("padding", "5px");
+
+				d3.select("div.tooltip span")
+					.style("font-size", "5px")
+					.style("color", "grey");
+
+			}
+
+			// leave
+			var country_mouseleave = function (d) {
+
+				country_tooltip.transition()
+					.delay(200)
+					.duration(20)
+					.style("opacity", 0);
+
+			}
+
+
+			// Timeline	
+			// -------------------------------------- cover rect 
+
+			// Cover the lower area with rect
+			var rect = svg.append("rect")
+				.attr("x", 0)
+				.attr("y", 550)
+				.attr("width", width)
+				.attr("height", 200)
+				.style("fill", back_col)
+
+			// -------------------------------------- axes 
+
+			// Draw the Axes
+			svg.append("g").classed("axe", true)
+				.attr("transform", "translate(0 , 610)")
+				.call(timeAxis);
+
+			// format the domain
+			d3.selectAll("g.axe .domain, g.axe g.tick line")
+				.style("stroke", main_col)
+				.style("opacity", 0.2);
+
+			// make centered ticks
+			d3.selectAll("g.axe g.tick line")
+				.attr("y1", -3)
+				.attr("y2", 4)
+				.style("opacity", 0.8)
+				.style("stroke", main_col);
+
+			// adjust font size and opacity
+			d3.selectAll("g.axe g.tick text")
+				.style("font-size", "8px")
+				.style("color", main_col)
+				.style("opacity", 1);
+
+			// -------------------------------------- circles 
+
+			svg.selectAll("circle.time_circles")
+				.data(dataset)  //.filter(d => d.tens == "1910-1920")
+				.enter().append("circle")
+				.classed("time_circles", true)
+				.attr("cx", d => timeScale(d.date))
+				.attr("cy", d => 570 + (d.random * 80))
+				.attr("r", d => areaScale(d.survivors))
+				.attr("stroke-width", 0.4)
+				.style("stroke-opacity", d => opacityScale(d.survivors) + 0.1)
+				.style("fill-opacity", d => opacityScale(d.survivors))
+				.style("stroke", d => regionScale(d.region))
+				.style("fill", d => regionScale(d.region))
+				;
+			// -------------------------------------- play function
+
+			// Time variables
+			var in_delay = 20;
+			var tot_delay = 5505 * in_delay;
+			var main_dots_time = 3000;
+			var contour_dots_time1 = 600;
+			var contour_dots_time2 = 1000;
+			var contour_dots_delay = 3;
+
+			var play = function (d) {
+				d3.select(this)
+					.style("fill", main_col)
+
+				// hide button while playing
+				d3.select(this)
+					.transition()
+					.duration(2000)
+					.style("opacity", 0)
+					.transition()
+					.duration(2000)
+					.delay(tot_delay + 1000)
+					.style("opacity", 1);
+
+				d3.select(".start_circle")
+					.transition()
+					.duration(2000)
+					.attr("r", 2)
+					.attr("stroke-width", 1)
+					.style("fill-opacity", 1)
+					.transition()
+					.duration(2000)
+					.delay(tot_delay + 1000)
+					.attr("r", 10)
+					.attr("stroke-width", 0.7)
+					.style("fill-opacity", 0);
+
+				// play time circles
+				d3.selectAll("circle.time_circles")
+					.attr("r", d => Math.random())
+					.attr("cx", d => timeScale(d.date))
+					.attr("cy", d => 570 + (d.random * 80))
+					.attr("stroke-width", 1)
+					.style("stroke-opacity", 0)
+					.style("fill-opacity", 0)
+					.transition()
+					.duration(3000)
+					.delay((d, i) => i * in_delay)
+					.attr("r", d => areaScale(d.survivors))
+					.attr("stroke-width", 0.4)
+					.style("stroke-opacity", d => opacityScale(d.survivors) + 0.1)
+					.style("fill-opacity", d => opacityScale(d.survivors));
+
+
+			};
+
+			var playBTN = function (d) {
+				// BTN1();
+				console.log("playBTN on")
+				d3.select(this)
+					.style("fill", main_col)
+
+				// hide button while playing
+				d3.select(this)
+					.transition()
+					.duration(2000)
+					.style("opacity", 0)
+					.transition()
+					.duration(2000)
+					.delay(tot_delay + 1000)
+					.style("opacity", 1);
+
+				// main circles
+				svg.selectAll("circle.main_circles")
+					.attr("stroke-width", 0.4)
+					.style("opacity", 1)
+					.style("style", "none")
+					.style("fill-opacity", 1);
+
+
+			};
+
+			// -------------------------------------- play button function
+
+			// over function
+			var over = function (d) {
+				d3.select(this)
+					.style("fill", main_col)
+			};
+
+			// move function
+			var move = function (d) {
+				d3.select(this)
+					.style("fill", main_col)
+			};
+
+			// leave function	
+			var leave = function (d) {
+				d3.select(this)
+					.style("fill", "green")
+			};
+
+			// leave function	
+			var downBTN = function (d) {
+				d3.select(this)
+					.style("fill", "#013220")
+			};
+
+			// leave function	
+			var upBTN = function (d) {
+				d3.select(this)
+					.style("fill", "green")
+			};
+			// -------------------------------------- play button
+
+			// add g element button
+			var startButton = svg.append("g")
+				.classed("start", true)
+				.attr("transform", "translate(-4,604.5)");
+
+			// start circle
+			startButton.append("circle")
+				.classed("start_circle", true)
+				.attr("cx", 4.5)
+				.attr("cy", 6)
+				.attr("r", 2)
+				.style("stroke", blue_col)
+				.attr("stroke-width", 0.7)
+				.style("fill", white_col)
+				.style("fill-opacity", 0);
+
+			// start button
+			startButton.append("polygon")
+				.classed("start_polygon", true)
+				.attr("points", "0,0 12,6 0,12")
+				.attr("stroke-width", 0.7)
+				.style("fill", white_col)
+				.style("opacity", 1)
+				.attr("transform", "translate(0,0)")
+				.on("mousedown", play)
+				.on("mouseover", over)
+				.on("mouseleave", leave)
+				.on("mousemove", move);
+
+			// start text
+			startButton.append("text")
+				.classed("start_text", true)
+				.attr("x", -4)
+				.attr("y", -7)
+				.text("Timelapse ")
+				.style("fill", main_col)
+				.style("font-size", "8px")
+				.attr("transform", "translate(0,-40)");
+
+			// -------------------------------------- end circle
+
+			svg.append("circle")
+				.classed("end_circle", true)
+				.attr("cx", timeScale(parseTime("2022-06-26")))
+				.attr("cy", 610)
+				.attr("r", 2)
+				.style("stroke", blue_col)
+				.style("fill", white_col);
+
+			// -------------------------------------- separation line
+
+			var sepLine = svg.append("line")
+				.classed("sep_line", true)
+				.attr("x1", 960)
+				.attr("y1", -20)
+				.attr("x2", 960)
+				.attr("y2", 660)
+				.style("stroke", dark_col)
+				.style("stroke-width", 0.3)
+				.style("opacity", 0);
+
+			//BTN2 On
+			svg.append("circle")
+				.attr("cx", 90)
+				.attr("cy", 15)
+				.attr("stroke", "white")
+				.style("fill", "green")
+				.attr("r", 10)
+				.on("mousedown", BTNOn)
+				// .on("mouseup", over)
+				.on("mouseover", over)
+				.on("mouseleave", leave)
+				.on("mousemove", move);
+
+			//BTN1 Off
+			svg.append("circle")
+				.attr("cx", 90)
+				.attr("cy", 45)
+				.attr("stroke", "white")
+				.style("fill", "green")
+				.attr("r", 10)
+				.on("mousedown", BTN1)
+				.on("mouseover", over)
+				.on("mouseleave", leave)
+				.on("mousemove", move);
+
+			svg.append("text")
+				.text("Map on : ")
+				.attr("x", 1)
+				.attr("y", 20)
+				.style("fill", "#90EE90")
+				.style("font", "14px Verdana")
+				.style("opacity", 0.9);
+
+			svg.append("text")
+				.text("Map off : ")
+				.attr("x", 1)
+				.attr("y", 50)
+				.style("fill", "#90EE90")
+				.style("font", "14px Verdana")
+				.style("opacity", 0.9);
+
+
+			// call the tooltip
+			d3.selectAll("path.country")
+				.on("mousemove", country_mousemove)
+				.on("mouseleave", country_mouseleave);
+
+
+		}
+		function BTN1() {
+			console.log("BTN off  works!");
+			svg.selectAll("circle.main_circles")
+				.style("opacity", 0);
+
+			svg.selectAll("circle.contour_circles")
+				.style("opacity", 0);
+		}
+
+
+		function BTNOn() {
+			console.log("BTN ON  works!");
+
+			svg.selectAll("circle.main_circles")
+				.style("opacity", 1);
+
+			svg.selectAll("circle.contour_circles")
+				.style("opacity", 1);
+		}
+
+	</script>
+</body>
+
+</html>
